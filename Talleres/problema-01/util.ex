@@ -54,4 +54,12 @@ defmodule Util do
   end
 
   def mostrar_error(mensaje), do: IO.puts(:standard_error, mensaje)
+
+  def ingresar(mensaje, :boolean) do
+    valor =
+    mensaje
+    |> ingresar(:texto)
+    |> String.downcase()
+    Enum.member?(["si", "sí", "s"], valor)
+  end
 end
