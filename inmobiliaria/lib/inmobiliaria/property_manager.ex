@@ -24,7 +24,7 @@ defmodule Inmobiliaria.PropertyManager do
   alias Inmobiliaria.Property
 
   @properties_file Path.expand("data/properties.dat", File.cwd!())
-  @results_file    Path.expand("data/results.log",    File.cwd!())
+  @results_file Path.expand("data/results.log", File.cwd!())
 
   # ---------------------------------------------------------------------------
   # API PÚBLICA
@@ -79,6 +79,16 @@ defmodule Inmobiliaria.PropertyManager do
     GenServer.call(__MODULE__, {:rent, prop_id, cliente})
   end
 
+  @doc "Reserva una propiedad disponible."
+  def reserve(prop_id, cliente) do
+    GenServer.call(__MODULE__, {:reserve, prop_id, cliente})
+  end
+
+  @doc "Cancela una operación y penaliza al cliente."
+  def cancel(prop_id, cliente) do
+    GenServer.call(__MODULE__, {:cancel, prop_id, cliente})
+  end
+
   @doc "Retorna la lista de registros del historial (results.log)"
   def get_results() do
     GenServer.call(__MODULE__, :get_results)
@@ -101,6 +111,7 @@ defmodule Inmobiliaria.PropertyManager do
            ) do
         {:ok, _pid} ->
           Logger.info("Proceso iniciado para propiedad existente: #{prop.id}")
+
         {:error, reason} ->
           Logger.error("No se pudo iniciar proceso para #{prop.id}: #{inspect(reason)}")
       end
@@ -118,20 +129,20 @@ defmodule Inmobiliaria.PropertyManager do
   def handle_call({:publish, username, attrs}, _from, state) do
     prop_id = generate_id(state.next_id)
 
-    with {:ok, precio}       <- parse_integer(attrs["precio"] || attrs[:precio], "precio"),
-         {:ok, habitaciones} <- parse_integer(attrs["habitaciones"] || attrs[:habitaciones], "habitaciones"),
-         {:ok, area}         <- parse_float(attrs["area"] || attrs[:area], "area") do
-
+    with {:ok, precio} <- parse_integer(attrs["precio"] || attrs[:precio], "precio"),
+         {:ok, habitaciones} <-
+           parse_integer(attrs["habitaciones"] || attrs[:habitaciones], "habitaciones"),
+         {:ok, area} <- parse_float(attrs["area"] || attrs[:area], "area") do
       nueva_prop = %Property{
-        id:           prop_id,
-        tipo:         attrs["tipo"] || attrs[:tipo] || "casa",
-        modalidad:    attrs["modalidad"] || attrs[:modalidad] || "venta",
-        ubicacion:    attrs["ubicacion"] || attrs[:ubicacion],
-        precio:       precio,
+        id: prop_id,
+        tipo: attrs["tipo"] || attrs[:tipo] || "casa",
+        modalidad: attrs["modalidad"] || attrs[:modalidad] || "venta",
+        ubicacion: attrs["ubicacion"] || attrs[:ubicacion],
+        precio: precio,
         habitaciones: habitaciones,
-        area:         area,
-        propietario:  username,
-        estado:       "disponible"
+        area: area,
+        propietario: username,
+        estado: "disponible"
       }
 
       # Iniciar proceso GenServer para la nueva propiedad
@@ -141,10 +152,11 @@ defmodule Inmobiliaria.PropertyManager do
            ) do
         {:ok, _pid} ->
           nuevo_state = %{
-            state |
-            properties: Map.put(state.properties, prop_id, nueva_prop),
-            next_id: state.next_id + 1
+            state
+            | properties: Map.put(state.properties, prop_id, nueva_prop),
+              next_id: state.next_id + 1
           }
+
           flush(nuevo_state.properties)
           Logger.info("Propiedad publicada: #{prop_id} por #{username}")
           {:reply, {:ok, nueva_prop}, nuevo_state}
@@ -183,6 +195,7 @@ defmodule Inmobiliaria.PropertyManager do
         # Estado en tiempo real desde el proceso
         info = if Property.alive?(prop_id), do: Property.get_info(prop_id), else: prop
         {:reply, {:ok, info}, state}
+
       :error ->
         {:reply, {:error, "Propiedad #{prop_id} no encontrada"}, state}
     end
@@ -190,27 +203,30 @@ defmodule Inmobiliaria.PropertyManager do
 
   @impl true
   def handle_call({:buy, prop_id, cliente}, _from, state) do
-    with {:ok, prop}         <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
-         {:alive}            <- check_alive(prop_id),
-         {:ok, prop_nueva}   <- Property.buy(prop_id, cliente) do
-
+    with {:ok, prop} <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
+         {:alive} <- check_alive(prop_id),
+         {:ok, prop_nueva} <- Property.buy(prop_id, cliente) do
       # Actualizar estado en el mapa local y persistir
       nuevo_state = put_in(state, [:properties, prop_id], prop_nueva)
       flush(nuevo_state.properties)
 
       # Asignar puntos
       Inmobiliaria.UserManager.add_score(cliente, Inmobiliaria.UserManager.puntos_para(:cliente))
-      Inmobiliaria.UserManager.add_score(prop.propietario, Inmobiliaria.UserManager.puntos_para(:vendedor))
+
+      Inmobiliaria.UserManager.add_score(
+        prop.propietario,
+        Inmobiliaria.UserManager.puntos_para(:vendedor)
+      )
 
       # Registrar en results.log
       log_result(%{
-        cliente:      cliente,
-        responsable:  prop.propietario,
-        prop_id:      prop_id,
-        operacion:    "compra",
-        ubicacion:    prop.ubicacion,
-        precio:       prop.precio,
-        status:       "Completada"
+        cliente: cliente,
+        responsable: prop.propietario,
+        prop_id: prop_id,
+        operacion: "compra",
+        ubicacion: prop.ubicacion,
+        precio: prop.precio,
+        status: "Completada"
       })
 
       {:reply, {:ok, prop_nueva}, nuevo_state}
@@ -221,29 +237,80 @@ defmodule Inmobiliaria.PropertyManager do
 
   @impl true
   def handle_call({:rent, prop_id, cliente}, _from, state) do
-    with {:ok, prop}         <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
-         {:alive}            <- check_alive(prop_id),
-         {:ok, prop_nueva}   <- Property.rent(prop_id, cliente) do
-
+    with {:ok, prop} <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
+         {:alive} <- check_alive(prop_id),
+         {:ok, prop_nueva} <- Property.rent(prop_id, cliente) do
       nuevo_state = put_in(state, [:properties, prop_id], prop_nueva)
       flush(nuevo_state.properties)
 
       Inmobiliaria.UserManager.add_score(cliente, Inmobiliaria.UserManager.puntos_para(:cliente))
-      Inmobiliaria.UserManager.add_score(prop.propietario, Inmobiliaria.UserManager.puntos_para(:arrendador))
+
+      Inmobiliaria.UserManager.add_score(
+        prop.propietario,
+        Inmobiliaria.UserManager.puntos_para(:arrendador)
+      )
 
       log_result(%{
-        cliente:     cliente,
+        cliente: cliente,
         responsable: prop.propietario,
-        prop_id:     prop_id,
-        operacion:   "arriendo",
-        ubicacion:   prop.ubicacion,
-        precio:      prop.precio,
-        status:      "Completada"
+        prop_id: prop_id,
+        operacion: "arriendo",
+        ubicacion: prop.ubicacion,
+        precio: prop.precio,
+        status: "Completada"
       })
 
       {:reply, {:ok, prop_nueva}, nuevo_state}
     else
       {:error, msg} -> {:reply, {:error, msg}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:reserve, prop_id, cliente}, _from, state) do
+    with {:ok, prop} <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
+         {:alive} <- check_alive(prop_id),
+         {:ok, prop_nueva} <- Property.reserve(prop_id, cliente) do
+      # Actualizar estado y persistir
+      nuevo_state = put_in(state, [:properties, prop_id], prop_nueva)
+      flush(nuevo_state.properties)
+
+      # Registrar en results.log
+      log_result(%{
+        cliente: cliente,
+        responsable: prop.propietario,
+        prop_id: prop_id,
+        operacion: "reserva"
+      })
+
+      {:reply, {:ok, prop_nueva}, nuevo_state}
+    else
+      err -> {:reply, err, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:cancel, prop_id, cliente}, _from, state) do
+    with {:ok, prop} <- Map.fetch(state.properties, prop_id) |> normalize_fetch(prop_id),
+         {:alive} <- check_alive(prop_id),
+         {:ok, prop_nueva} <- Property.cancel(prop_id, cliente) do
+      nuevo_state = put_in(state, [:properties, prop_id], prop_nueva)
+      flush(nuevo_state.properties)
+
+      # ¡Penalización! Restar 5 puntos al cliente por cancelar
+      Inmobiliaria.UserManager.add_score(cliente, -5)
+
+      # Registrar en results.log
+      log_result(%{
+        cliente: cliente,
+        responsable: prop.propietario,
+        prop_id: prop_id,
+        operacion: "cancelacion"
+      })
+
+      {:reply, {:ok, prop_nueva}, nuevo_state}
+    else
+      err -> {:reply, err, state}
     end
   end
 
@@ -265,7 +332,7 @@ defmodule Inmobiliaria.PropertyManager do
   defp ensure_storage! do
     File.mkdir_p!("data")
     unless File.exists?(@properties_file), do: File.write!(@properties_file, "")
-    unless File.exists?(@results_file),    do: File.write!(@results_file, "")
+    unless File.exists?(@results_file), do: File.write!(@results_file, "")
     :ok
   end
 
@@ -290,9 +357,12 @@ defmodule Inmobiliaria.PropertyManager do
 
   defp log_result(r) do
     fecha = Date.to_string(Date.utc_today())
-    linea = "#{fecha};cliente=#{r.cliente};responsable=#{r.responsable};" <>
-            "propiedad=#{r.prop_id};operacion=#{r.operacion};" <>
-            "ubicacion=#{r.ubicacion};precio=#{r.precio};status=#{r.status}\n"
+
+    linea =
+      "#{fecha};cliente=#{r.cliente};responsable=#{r.responsable};" <>
+        "propiedad=#{r.prop_id};operacion=#{r.operacion};" <>
+        "ubicacion=#{r.ubicacion};precio=#{r.precio};status=#{r.status}\n"
+
     File.write!(@results_file, linea, [:append])
   end
 
@@ -307,12 +377,16 @@ defmodule Inmobiliaria.PropertyManager do
   defp parse_result_line(line) do
     # "fecha;cliente=ana;responsable=carlos;propiedad=prop001;..."
     parts = String.split(line, ";")
+
     if length(parts) == 8 do
       [fecha | kv_parts] = parts
-      kvs = Map.new(kv_parts, fn part ->
-        [k, v] = String.split(part, "=", parts: 2)
-        {k, v}
-      end)
+
+      kvs =
+        Map.new(kv_parts, fn part ->
+          [k, v] = String.split(part, "=", parts: 2)
+          {k, v}
+        end)
+
       Map.put(kvs, "fecha", fecha)
     else
       nil
@@ -334,10 +408,10 @@ defmodule Inmobiliaria.PropertyManager do
 
   defp apply_filters(lista, filters) do
     lista
-    |> maybe_filter(filters, "tipo",      &(&1.tipo == &2))
+    |> maybe_filter(filters, "tipo", &(&1.tipo == &2))
     |> maybe_filter(filters, "modalidad", &(&1.modalidad == &2))
     |> maybe_filter(filters, "ubicacion", &(String.downcase(&1.ubicacion) == String.downcase(&2)))
-    |> maybe_filter(filters, "estado",    &(&1.estado == &2))
+    |> maybe_filter(filters, "estado", &(&1.estado == &2))
     |> maybe_filter_int(filters, "precio_min", &(&1.precio >= &2))
     |> maybe_filter_int(filters, "precio_max", &(&1.precio <= &2))
   end
@@ -345,7 +419,7 @@ defmodule Inmobiliaria.PropertyManager do
   defp maybe_filter(lista, filters, key, fun) do
     case Map.fetch(filters, key) do
       {:ok, val} -> Enum.filter(lista, &fun.(&1, val))
-      :error     -> lista
+      :error -> lista
     end
   end
 
@@ -356,23 +430,30 @@ defmodule Inmobiliaria.PropertyManager do
           {n, _} -> Enum.filter(lista, &fun.(&1, n))
           :error -> lista
         end
-      :error -> lista
+
+      :error ->
+        lista
     end
   end
 
   defp parse_integer(nil, campo), do: {:error, "Falta el campo: #{campo}"}
+
   defp parse_integer(val, campo) when is_binary(val) do
     case Integer.parse(val) do
       {n, _} -> {:ok, n}
       :error -> {:error, "El campo #{campo} debe ser un número entero"}
     end
   end
+
   defp parse_integer(val, _) when is_integer(val), do: {:ok, val}
 
   defp parse_float(nil, campo), do: {:error, "Falta el campo: #{campo}"}
+
   defp parse_float(val, campo) when is_binary(val) do
     case Float.parse(val) do
-      {f, _} -> {:ok, f}
+      {f, _} ->
+        {:ok, f}
+
       :error ->
         case Integer.parse(val) do
           {n, _} -> {:ok, n * 1.0}
@@ -380,13 +461,16 @@ defmodule Inmobiliaria.PropertyManager do
         end
     end
   end
+
   defp parse_float(val, _) when is_float(val), do: {:ok, val}
   defp parse_float(val, _) when is_integer(val), do: {:ok, val * 1.0}
 
   defp normalize_fetch({:ok, val}, _), do: {:ok, val}
-  defp normalize_fetch(:error, id),    do: {:error, "Propiedad #{id} no encontrada"}
+  defp normalize_fetch(:error, id), do: {:error, "Propiedad #{id} no encontrada"}
 
   defp check_alive(prop_id) do
-    if Property.alive?(prop_id), do: {:alive}, else: {:error, "El proceso de la propiedad no está activo"}
+    if Property.alive?(prop_id),
+      do: {:alive},
+      else: {:error, "El proceso de la propiedad no está activo"}
   end
 end

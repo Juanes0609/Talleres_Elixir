@@ -28,6 +28,14 @@ defmodule Inmobiliaria.Server do
     GenServer.call(__MODULE__, {:rent_property, username, prop_id})
   end
 
+  def reserve_property(username, prop_id) do
+    GenServer.call(__MODULE__, {:reserve_property, username, prop_id})
+  end
+
+  def cancel_property(username, prop_id) do
+    GenServer.call(__MODULE__, {:cancel_property, username, prop_id})
+  end
+
   def send_message(username, prop_id, mensaje) do
     GenServer.call(__MODULE__, {:send_message, username, prop_id, mensaje})
   end
@@ -159,6 +167,42 @@ defmodule Inmobiliaria.Server do
     end
   end
 
+  # --- reserve_property ---
+  @impl true
+  def handle_call({:reserve_property, username, prop_id}, _from, state) do
+    cond do
+      not Map.has_key?(state.sessions, username) ->
+        {:reply, {:error, "Debes conectarte primero"}, state}
+
+      state.sessions[username].role != "cliente" ->
+        {:reply, {:error, "Solo los clientes pueden reservar propiedades"}, state}
+
+      true ->
+        case Inmobiliaria.PropertyManager.reserve(prop_id, username) do
+          {:ok, property} -> {:reply, {:ok, property}, state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
+  # --- cancel_property ---
+  @impl true
+  def handle_call({:cancel_property, username, prop_id}, _from, state) do
+    cond do
+      not Map.has_key?(state.sessions, username) ->
+        {:reply, {:error, "Debes conectarte primero"}, state}
+
+      state.sessions[username].role != "cliente" ->
+        {:reply, {:error, "Solo los clientes pueden cancelar"}, state}
+
+      true ->
+        case Inmobiliaria.PropertyManager.cancel(prop_id, username) do
+          {:ok, property} -> {:reply, {:ok, property}, state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
+    end
+  end
+
   # --- send_message ---
   @impl true
   def handle_call({:send_message, username, prop_id, mensaje}, _from, state) do
@@ -240,154 +284,146 @@ defmodule Inmobiliaria.Server do
     tokens = String.split(input, " ", trim: true)
 
     case tokens do
-      # connect <username> <password> <rol>
-      ["connect", username, password, role] ->
-        case connect(username, password, role) do
-          {:ok, user} ->
-            IO.puts("Conectado como #{user.username} (#{user.role}) | Puntaje: #{user.score}")
-            username
+      ["connect", u, p, r] ->
+        case connect(u, p, r) do
+          {:ok, _user} ->
+            IO.puts("=> Conexión exitosa. Bienvenido, #{u}.")
+            u
 
-          {:error, reason} ->
-            IO.puts("Error: #{inspect(reason)}")
+          {:error, err} ->
+            IO.puts("=> Error: #{inspect(err)}")
             usuario_activo
         end
 
-      # disconnect
       ["disconnect"] ->
         if usuario_activo do
           disconnect(usuario_activo)
-          IO.puts("Sesion cerrada.")
-          nil
-        else
-          IO.puts("No hay sesion activa.")
-          nil
+          IO.puts("=> Sesión cerrada.")
         end
 
-      # publish_property tipo=casa modalidad=venta ubicacion=Armenia precio=300000000 habitaciones=4 area=180
-      ["publish_property" | rest] ->
-        attrs = parse_kv(rest)
+        nil
 
-        case publish_property(usuario_activo, attrs) do
-          {:ok, prop} ->
-            IO.puts("Propiedad publicada exitosamente. ID: #{prop.id}")
-
-          {:error, reason} ->
-            IO.puts("Error: #{reason}")
-        end
-
-        usuario_activo
-
-      # list_properties [filtros...]
-      ["list_properties" | rest] ->
-        filters = parse_kv(rest)
-        propiedades = list_properties(filters)
-
-        if propiedades == [] do
-          IO.puts("No se encontraron propiedades con esos filtros.")
-        else
-          Enum.each(propiedades, &imprimir_propiedad/1)
-        end
-
-        usuario_activo
-
-      # buy_property <prop_id>
       ["buy_property", prop_id] ->
-        case buy_property(usuario_activo, prop_id) do
-          {:ok, prop} ->
-            puntos = Inmobiliaria.UserManager.puntos_para(:cliente)
-            IO.puts("Compra exitosa! Propiedad #{prop.id} es tuya. +#{puntos} puntos.")
-
-          {:error, reason} ->
-            IO.puts("Error: #{reason}")
-        end
+        if usuario_activo,
+          do: IO.inspect(buy_property(usuario_activo, prop_id)),
+          else: IO.puts("=> Conéctate primero.")
 
         usuario_activo
 
-      # rent_property <prop_id>
       ["rent_property", prop_id] ->
-        case rent_property(usuario_activo, prop_id) do
-          {:ok, prop} ->
-            puntos = Inmobiliaria.UserManager.puntos_para(:cliente)
-            IO.puts("Arriendo exitoso! Propiedad #{prop.id} arrendada. +#{puntos} puntos.")
-
-          {:error, reason} ->
-            IO.puts("Error: #{reason}")
-        end
+        if usuario_activo,
+          do: IO.inspect(rent_property(usuario_activo, prop_id)),
+          else: IO.puts("=> Conéctate primero.")
 
         usuario_activo
 
-      # send_message <prop_id> <mensaje con espacios>
-      ["send_message", prop_id | resto_mensaje] ->
-        mensaje = Enum.join(resto_mensaje, " ")
-
-        case send_message(usuario_activo, prop_id, mensaje) do
-          :ok -> IO.puts("Mensaje enviado.")
-          {:error, r} -> IO.puts("Error: #{r}")
-        end
+      ["reserve_property", prop_id] ->
+        if usuario_activo,
+          do: IO.inspect(reserve_property(usuario_activo, prop_id)),
+          else: IO.puts("=> Conéctate primero.")
 
         usuario_activo
 
-      # read_messages <prop_id>
-      ["read_messages", prop_id] ->
-        case read_messages(usuario_activo, prop_id) do
-          {:error, r} ->
-            IO.puts("Error: #{r}")
-
-          mensajes ->
-            if mensajes == [] do
-              IO.puts("No hay mensajes para esta propiedad.")
-            else
-              Enum.each(mensajes, &imprimir_mensaje/1)
-            end
-        end
+      ["cancel_property", prop_id] ->
+        if usuario_activo,
+          do: IO.inspect(cancel_property(usuario_activo, prop_id)),
+          else: IO.puts("=> Conéctate primero.")
 
         usuario_activo
 
-      # my_score
       ["my_score"] ->
-        if usuario_activo do
-          case my_score(usuario_activo) do
-            {:ok, score} -> IO.puts("Tu puntaje: #{score}")
-            {:error, _} -> IO.puts("No se pudo obtener el puntaje.")
+        defp despachar_comando(input, usuario_activo) do
+          tokens = String.split(input, " ", trim: true)
+
+          case tokens do
+            ["connect", u, p, r] ->
+              case connect(u, p, r) do
+                {:ok, _user} ->
+                  IO.puts("=> Conexión exitosa. Bienvenido, #{u}.")
+                  u
+
+                {:error, err} ->
+                  IO.puts("=> Error: #{inspect(err)}")
+                  usuario_activo
+              end
+
+            ["disconnect"] ->
+              if usuario_activo do
+                disconnect(usuario_activo)
+                IO.puts("=> Sesión cerrada.")
+              end
+
+              nil
+
+            ["buy_property", prop_id] ->
+              if usuario_activo,
+                do: IO.inspect(buy_property(usuario_activo, prop_id)),
+                else: IO.puts("=> Conéctate primero.")
+
+              usuario_activo
+
+            ["rent_property", prop_id] ->
+              if usuario_activo,
+                do: IO.inspect(rent_property(usuario_activo, prop_id)),
+                else: IO.puts("=> Conéctate primero.")
+
+              usuario_activo
+
+            ["reserve_property", prop_id] ->
+              if usuario_activo,
+                do: IO.inspect(reserve_property(usuario_activo, prop_id)),
+                else: IO.puts("=> Conéctate primero.")
+
+              usuario_activo
+
+            ["cancel_property", prop_id] ->
+              if usuario_activo,
+                do: IO.inspect(cancel_property(usuario_activo, prop_id)),
+                else: IO.puts("=> Conéctate primero.")
+
+              usuario_activo
+
+            ["my_score"] ->
+              if usuario_activo,
+                do: IO.inspect(my_score(usuario_activo)),
+                else: IO.puts("=> Conéctate primero.")
+
+              usuario_activo
+
+            ["ranking"] ->
+              IO.inspect(ranking())
+              usuario_activo
+
+            ["help"] ->
+              # Asegúrate de que esta función exista mostrando todos los comandos
+              imprimir_ayuda()
+              usuario_activo
+
+            # Comando genérico para comandos que faltan (publish_property, etc.)
+            _ ->
+              IO.puts("=> Comando no reconocido o faltan argumentos. Usa 'help'.")
+              usuario_activo
           end
-        else
-          IO.puts("Debes conectarte primero.")
         end
 
+        if usuario_activo,
+          do: IO.inspect(my_score(usuario_activo)),
+          else: IO.puts("=> Conéctate primero.")
+
         usuario_activo
 
-      # ranking
       ["ranking"] ->
-        imprimir_ranking(ranking(), "Ranking Global")
+        IO.inspect(ranking())
         usuario_activo
 
-      ["ranking_compradores"] ->
-        imprimir_ranking(ranking_compradores(), "Ranking Compradores (clientes)")
-        usuario_activo
-
-      ["ranking_vendedores"] ->
-        imprimir_ranking(ranking_vendedores(), "Ranking Vendedores")
-        usuario_activo
-
-      ["ranking_arrendadores"] ->
-        imprimir_ranking(ranking_arrendadores(), "Ranking Arrendadores")
-        usuario_activo
-
-      # list_locations
-      ["list_locations"] ->
-        list_locations()
-        |> Enum.with_index(1)
-        |> Enum.each(fn {loc, i} -> IO.puts("  #{i}. #{loc}") end)
-
-        usuario_activo
-
-      # help
       ["help"] ->
+        # Asegúrate de que esta función exista mostrando todos los comandos
         imprimir_ayuda()
         usuario_activo
 
+      # Comando genérico para comandos que faltan (publish_property, etc.)
       _ ->
-        IO.puts("Comando desconocido. Escribe 'help' para ver los comandos disponibles.")
+        IO.puts("=> Comando no reconocido o faltan argumentos. Usa 'help'.")
         usuario_activo
     end
   end
@@ -428,7 +464,7 @@ defmodule Inmobiliaria.Server do
     else
       lista
       |> Enum.with_index(1)
-      |> Enum.each(fn %{username: u, role: r, score: s}, i ->
+      |> Enum.each(fn {%{username: u, role: r, score: s}, i} ->
         IO.puts("  #{i}. #{u} (#{r}) — #{s} pts")
       end)
     end

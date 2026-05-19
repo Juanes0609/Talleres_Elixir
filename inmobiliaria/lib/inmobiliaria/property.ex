@@ -20,18 +20,26 @@ defmodule Inmobiliaria.Property do
   # STRUCT
   # ---------------------------------------------------------------------------
 
-  @enforce_keys [:id, :tipo, :modalidad, :ubicacion, :precio,
-                 :habitaciones, :area, :propietario]
+  @enforce_keys [:id, :tipo, :modalidad, :ubicacion, :precio, :habitaciones, :area, :propietario]
   defstruct [
-    :id,            # String único, ej: "prop001"
-    :tipo,          # "casa" | "apartamento" | "oficina" | "lote"
-    :modalidad,     # "venta" | "arriendo"
-    :ubicacion,     # String, debe existir en locations.dat
-    :precio,        # Integer (en pesos colombianos)
-    :habitaciones,  # Integer
-    :area,          # Float (metros cuadrados)
-    :propietario,   # String (username del vendedor/arrendador)
-    estado: "disponible"  # "disponible" | "reservada" | "vendida" | "arrendada"
+    # String único, ej: "prop001"
+    :id,
+    # "casa" | "apartamento" | "oficina" | "lote"
+    :tipo,
+    # "venta" | "arriendo"
+    :modalidad,
+    # String, debe existir en locations.dat
+    :ubicacion,
+    # Integer (en pesos colombianos)
+    :precio,
+    # Integer
+    :habitaciones,
+    # Float (metros cuadrados)
+    :area,
+    # String (username del vendedor/arrendador)
+    :propietario,
+    # "disponible" | "reservada" | "vendida" | "arrendada"
+    estado: "disponible"
   ]
 
   # ---------------------------------------------------------------------------
@@ -64,6 +72,16 @@ defmodule Inmobiliaria.Property do
     GenServer.call(via_tuple(prop_id), {:rent, cliente})
   end
 
+  @doc "Intenta reservar temporalmente la propiedad."
+  def reserve(prop_id, cliente) do
+    GenServer.call(via_tuple(prop_id), {:reserve, cliente})
+  end
+
+  @doc "Cancela una operación sobre la propiedad"
+  def cancel(prop_id, cliente) do
+    GenServer.call(via_tuple(prop_id), {:cancel, cliente})
+  end
+
   @doc "Actualiza el estado manualmente (uso interno del PropertyManager)"
   def update_estado(prop_id, nuevo_estado) do
     GenServer.call(via_tuple(prop_id), {:update_estado, nuevo_estado})
@@ -73,7 +91,7 @@ defmodule Inmobiliaria.Property do
   def alive?(prop_id) do
     case Registry.lookup(Inmobiliaria.PropertyRegistry, prop_id) do
       [{_pid, _}] -> true
-      []          -> false
+      [] -> false
     end
   end
 
@@ -83,7 +101,10 @@ defmodule Inmobiliaria.Property do
 
   @impl true
   def init(%__MODULE__{} = property) do
-    Logger.info("Proceso iniciado para propiedad #{property.id} (#{property.tipo} en #{property.ubicacion})")
+    Logger.info(
+      "Proceso iniciado para propiedad #{property.id} (#{property.tipo} en #{property.ubicacion})"
+    )
+
     {:ok, property}
   end
 
@@ -96,7 +117,8 @@ defmodule Inmobiliaria.Property do
   def handle_call({:buy, cliente}, _from, property) do
     cond do
       property.estado != "disponible" ->
-        {:reply, {:error, "La propiedad no esta disponible (estado: #{property.estado})"}, property}
+        {:reply, {:error, "La propiedad no esta disponible (estado: #{property.estado})"},
+         property}
 
       property.modalidad != "venta" ->
         {:reply, {:error, "Esta propiedad es de arriendo, no de venta"}, property}
@@ -112,7 +134,8 @@ defmodule Inmobiliaria.Property do
   def handle_call({:rent, cliente}, _from, property) do
     cond do
       property.estado != "disponible" ->
-        {:reply, {:error, "La propiedad no esta disponible (estado: #{property.estado})"}, property}
+        {:reply, {:error, "La propiedad no esta disponible (estado: #{property.estado})"},
+         property}
 
       property.modalidad != "arriendo" ->
         {:reply, {:error, "Esta propiedad es de venta, no de arriendo"}, property}
@@ -125,6 +148,30 @@ defmodule Inmobiliaria.Property do
   end
 
   @impl true
+  def handle_call({:reserve, _cliente}, _from, property) do
+    cond do
+      property.estado != "disponible" ->
+        {:reply, {:error, "La propiedad no está disponible (estado: #{property.estado})"}, property}
+
+        true ->
+          nueva_prop = %{property | estado: "reservada"}
+        {:reply, {:ok, nueva_prop}, nueva_prop}
+    end
+  end
+
+  @impl true
+  def handle_call({:cancel, _cliente}, _from, property) do
+    cond do
+      property.estado not in ["reservada", "vendida", "arrendada"]->
+        {:reply, {:error, "La propiedad no tiene operaciones para cancelar"}, property}
+
+        true ->
+          nueva_prop = %{property | estado: "disponible"}
+        {:reply, {:ok, nueva_prop}, nueva_prop}
+    end
+  end
+
+  @impl true
   def handle_call({:update_estado, nuevo_estado}, _from, property) do
     nueva = %{property | estado: nuevo_estado}
     {:reply, {:ok, nueva}, nueva}
@@ -132,7 +179,10 @@ defmodule Inmobiliaria.Property do
 
   @impl true
   def handle_call(msg, from, property) do
-    Logger.warning("Property #{property.id}: mensaje inesperado #{inspect(msg)} de #{inspect(from)}")
+    Logger.warning(
+      "Property #{property.id}: mensaje inesperado #{inspect(msg)} de #{inspect(from)}"
+    )
+
     {:reply, {:error, :unknown}, property}
   end
 
@@ -174,19 +224,19 @@ defmodule Inmobiliaria.Property do
   def from_line(line) do
     case String.split(String.trim(line), ";") do
       [id, tipo, modalidad, ubicacion, precio_s, hab_s, area_s, estado, propietario] ->
-        with {precio, _}      <- Integer.parse(precio_s),
+        with {precio, _} <- Integer.parse(precio_s),
              {habitaciones, _} <- Integer.parse(hab_s),
-             {area, _}         <- Float.parse(area_s) do
+             {area, _} <- Float.parse(area_s) do
           %__MODULE__{
-            id:           id,
-            tipo:         tipo,
-            modalidad:    modalidad,
-            ubicacion:    ubicacion,
-            precio:       precio,
+            id: id,
+            tipo: tipo,
+            modalidad: modalidad,
+            ubicacion: ubicacion,
+            precio: precio,
             habitaciones: habitaciones,
-            area:         area,
-            estado:       estado,
-            propietario:  propietario
+            area: area,
+            estado: estado,
+            propietario: propietario
           }
         else
           _ ->
