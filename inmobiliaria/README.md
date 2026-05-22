@@ -1,3 +1,4 @@
+```mermaid
 graph TD
     %% Supervisor Principal
     Root["🗂️ Inmobiliaria.Supervisor<br>(one_for_one)"]
@@ -40,3 +41,4 @@ graph TD
     class PropSup dynSupervisor;
     class Reg,Loc,Usr,Msg,PropMgr,Srv worker;
     class P1,P2,PN dynamicWorker;
+```
