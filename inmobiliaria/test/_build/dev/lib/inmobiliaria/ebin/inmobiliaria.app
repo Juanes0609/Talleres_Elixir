@@ -1,0 +1,1 @@
+{application,inmobiliaria,[{modules,[]},{optional_applications,[]},{applications,[kernel,stdlib,elixir,logger]},{description,"inmobiliaria"},{registered,[]},{vsn,"0.1.0"},{mod,{'Elixir.Inmobiliaria.Application',[]}}]}.

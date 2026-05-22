@@ -1,4 +1,3 @@
-# Lo que debería tener supervisor.ex:
 defmodule Inmobiliaria.PropertySupervisor do
   use DynamicSupervisor
 

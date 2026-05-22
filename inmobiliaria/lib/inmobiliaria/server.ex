@@ -284,144 +284,131 @@ defmodule Inmobiliaria.Server do
     tokens = String.split(input, " ", trim: true)
 
     case tokens do
-      ["connect", u, p, r] ->
+      ["conectarse", u, p, r] ->
         case connect(u, p, r) do
           {:ok, _user} ->
             IO.puts("=> Conexión exitosa. Bienvenido, #{u}.")
             u
-
           {:error, err} ->
             IO.puts("=> Error: #{inspect(err)}")
             usuario_activo
         end
 
-      ["disconnect"] ->
+      ["cerrar_sesion"] ->
         if usuario_activo do
           disconnect(usuario_activo)
           IO.puts("=> Sesión cerrada.")
         end
-
         nil
 
-      ["buy_property", prop_id] ->
+      ["publicar_propiedad" | resto] ->
+        if usuario_activo do
+          attrs = parse_kv(resto)
+          case publish_property(usuario_activo, attrs) do
+            {:ok, prop} ->
+              IO.puts("=> Propiedad publicada con ID: #{prop.id}")
+              imprimir_propiedad(prop)
+            {:error, err} ->
+              IO.puts("=> Error: #{inspect(err)}")
+          end
+        else
+          IO.puts("=> Conéctate primero.")
+        end
+        usuario_activo
+
+      ["lista_propiedades" | resto] ->
+        filters = parse_kv(resto)
+        propiedades = list_properties(filters)
+        if propiedades == [] do
+          IO.puts("=> No hay propiedades disponibles.")
+        else
+          Enum.each(propiedades, &imprimir_propiedad/1)
+        end
+        usuario_activo
+
+      ["comprar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(buy_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
-
         usuario_activo
 
-      ["rent_property", prop_id] ->
+      ["alquilar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(rent_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
-
         usuario_activo
 
-      ["reserve_property", prop_id] ->
+      ["reservar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(reserve_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
-
         usuario_activo
 
-      ["cancel_property", prop_id] ->
+      ["cancelar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(cancel_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
-
         usuario_activo
 
-      ["my_score"] ->
-        defp despachar_comando(input, usuario_activo) do
-          tokens = String.split(input, " ", trim: true)
-
-          case tokens do
-            ["connect", u, p, r] ->
-              case connect(u, p, r) do
-                {:ok, _user} ->
-                  IO.puts("=> Conexión exitosa. Bienvenido, #{u}.")
-                  u
-
-                {:error, err} ->
-                  IO.puts("=> Error: #{inspect(err)}")
-                  usuario_activo
-              end
-
-            ["disconnect"] ->
-              if usuario_activo do
-                disconnect(usuario_activo)
-                IO.puts("=> Sesión cerrada.")
-              end
-
-              nil
-
-            ["buy_property", prop_id] ->
-              if usuario_activo,
-                do: IO.inspect(buy_property(usuario_activo, prop_id)),
-                else: IO.puts("=> Conéctate primero.")
-
-              usuario_activo
-
-            ["rent_property", prop_id] ->
-              if usuario_activo,
-                do: IO.inspect(rent_property(usuario_activo, prop_id)),
-                else: IO.puts("=> Conéctate primero.")
-
-              usuario_activo
-
-            ["reserve_property", prop_id] ->
-              if usuario_activo,
-                do: IO.inspect(reserve_property(usuario_activo, prop_id)),
-                else: IO.puts("=> Conéctate primero.")
-
-              usuario_activo
-
-            ["cancel_property", prop_id] ->
-              if usuario_activo,
-                do: IO.inspect(cancel_property(usuario_activo, prop_id)),
-                else: IO.puts("=> Conéctate primero.")
-
-              usuario_activo
-
-            ["my_score"] ->
-              if usuario_activo,
-                do: IO.inspect(my_score(usuario_activo)),
-                else: IO.puts("=> Conéctate primero.")
-
-              usuario_activo
-
-            ["ranking"] ->
-              IO.inspect(ranking())
-              usuario_activo
-
-            ["help"] ->
-              # Asegúrate de que esta función exista mostrando todos los comandos
-              imprimir_ayuda()
-              usuario_activo
-
-            # Comando genérico para comandos que faltan (publish_property, etc.)
-            _ ->
-              IO.puts("=> Comando no reconocido o faltan argumentos. Usa 'help'.")
-              usuario_activo
+      ["enviar_mensajes", prop_id | resto] ->
+        if usuario_activo do
+          mensaje = Enum.join(resto, " ")
+          case send_message(usuario_activo, prop_id, mensaje) do
+            :ok -> IO.puts("=> Mensaje enviado.")
+            {:error, err} -> IO.puts("=> Error: #{inspect(err)}")
           end
+        else
+          IO.puts("=> Conéctate primero.")
         end
+        usuario_activo
 
+      ["leer_mensajes", prop_id] ->
+        if usuario_activo do
+          mensajes = read_messages(usuario_activo, prop_id)
+          case mensajes do
+            {:error, err} ->
+              IO.puts("=> Error: #{inspect(err)}")
+            [] ->
+              IO.puts("=> No hay mensajes para esta propiedad.")
+            lista ->
+              Enum.each(lista, &imprimir_mensaje/1)
+          end
+        else
+          IO.puts("=> Conéctate primero.")
+        end
+        usuario_activo
+
+      ["mi_puntaje"] ->
         if usuario_activo,
-          do: IO.inspect(my_score(usuario_activo)),
+          do: IO.puts("=> Tu puntaje: #{my_score(usuario_activo)} pts"),
           else: IO.puts("=> Conéctate primero.")
-
         usuario_activo
 
       ["ranking"] ->
-        IO.inspect(ranking())
+        imprimir_ranking(ranking(), "Ranking Global")
+        usuario_activo
+
+      ["ranking_compradores"] ->
+        imprimir_ranking(ranking_compradores(), "Ranking Compradores")
+        usuario_activo
+
+      ["ranking_vendedores"] ->
+        imprimir_ranking(ranking_vendedores(), "Ranking Vendedores")
+        usuario_activo
+
+      ["ranking_arrendadores"] ->
+        imprimir_ranking(ranking_arrendadores(), "Ranking Arrendadores")
+        usuario_activo
+
+      ["lista_ubicaciones"] ->
+        IO.puts("=> Ubicaciones válidas:")
+        Enum.each(list_locations(), &IO.puts("   - #{&1}"))
         usuario_activo
 
       ["help"] ->
-        # Asegúrate de que esta función exista mostrando todos los comandos
         imprimir_ayuda()
         usuario_activo
 
-      # Comando genérico para comandos que faltan (publish_property, etc.)
       _ ->
         IO.puts("=> Comando no reconocido o faltan argumentos. Usa 'help'.")
         usuario_activo
@@ -478,32 +465,34 @@ defmodule Inmobiliaria.Server do
     === Comandos disponibles ===
 
     SESION:
-      connect <usuario> <clave> <rol>      Conectarse (rol: cliente | vendedor | arrendador)
-      disconnect                           Cerrar sesion
+      conectarse <usuario> <clave> <rol>      Conectarse (rol: cliente | vendedor | arrendador)
+      cerrar_sesion                           Cerrar sesion
 
     PROPIEDADES:
-      publish_property tipo=<t> modalidad=<m> ubicacion=<u> precio=<p> habitaciones=<h> area=<a>
-                                           Publicar propiedad (vendedor/arrendador)
-      list_properties [tipo=<t>] [modalidad=<m>] [ubicacion=<u>] [precio_min=<n>] [precio_max=<n>]
-                                           Listar propiedades con filtros opcionales
-      buy_property <prop_id>              Comprar propiedad (cliente)
-      rent_property <prop_id>             Arrendar propiedad (cliente)
+      publicar_propiedad tipo=<t> modalidad=<m> ubicacion=<u> precio=<p> habitaciones=<h> area=<a>
+                                              Publicar propiedad (vendedor/arrendador)
+
+      lista_propiedades [tipo=<t>] [modalidad=<m>] [ubicacion=<u>] [precio_min=<n>] [precio_max=<n>]
+                                              Listar propiedades con filtros opcionales
+
+      comprar_propiedad <prop_id>             Comprar propiedad (cliente)
+      alquilar_propiedad <prop_id>            Arrendar propiedad (cliente)
 
     MENSAJERIA:
-      send_message <prop_id> <mensaje>    Enviar mensaje al propietario
-      read_messages <prop_id>             Ver mensajes de una propiedad (vendedor/arrendador)
+      enviar_mensajes <prop_id> <mensaje>     Enviar mensaje al propietario
+      leer_mensajes <prop_id>                 Ver mensajes de una propiedad (vendedor/arrendador)
 
     PUNTAJES Y RANKINGS:
-      my_score                            Ver tu puntaje actual
-      ranking                             Ranking global
-      ranking_compradores                 Ranking de clientes
-      ranking_vendedores                  Ranking de vendedores
-      ranking_arrendadores                Ranking de arrendadores
+      mi_puntaje                              Ver tu puntaje actual
+      ranking                                 Ranking global
+      ranking_compradores                     Ranking de clientes
+      ranking_vendedores                      Ranking de vendedores
+      ranking_arrendadores                    Ranking de arrendadores
 
     OTROS:
-      list_locations                      Ver ubicaciones validas
-      help                                Mostrar esta ayuda
-      exit                                Salir del sistema
+      lista_ubicaciones                       Ver ubicaciones validas
+      help                                    Mostrar esta ayuda
+      exit                                    Salir del sistema
     """)
   end
 end

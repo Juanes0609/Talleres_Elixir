@@ -3,7 +3,7 @@ Code.require_file("../problema-01/util.ex")
 defmodule NodoCliente do
   @nombre_servicio_local :servicio_respuesta
   @servicio_local {@nombre_servicio_local, :nodocliente@cliente}
-  @nodo_remoto :"nodoservidor@190.130.105.157"
+  @nodo_remoto :"nodo_servidor@190.130.105.157"
   @servicio_remoto {:servicio_cadenas, @nodo_remoto}
 
   @mensajes [
@@ -60,3 +60,4 @@ defmodule NodoCliente do
 end
 
 NodoCliente.main()
+w

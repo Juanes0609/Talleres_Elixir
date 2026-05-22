@@ -1,14 +1,5 @@
 defmodule Inmobiliaria.Application do
   @moduledoc """
-  Módulo principal de la aplicación OTP.
-
-  Adaptado de Taxi.Application (urbanfleet) para el sistema inmobiliario.
-  Cambios respecto al original:
-    - Se eliminó el modo cliente/servidor con variable de entorno ROLE
-    - Reemplazado Taxi.TripsRegistry   -> Inmobiliaria.PropertyRegistry
-    - Reemplazado Taxi.TripSupervisor  -> Inmobiliaria.PropertySupervisor
-    - Agregados: Location, MessageManager, PropertyManager
-
   Árbol de supervisión (OTP Tree):
     Inmobiliaria.Supervisor              (one_for_one)
     ├── Registry                         (Inmobiliaria.PropertyRegistry)
@@ -41,12 +32,12 @@ defmodule Inmobiliaria.Application do
       # Gestión de mensajería entre clientes y propietarios
       {Inmobiliaria.MessageManager, name: Inmobiliaria.MessageManager},
 
-      # Registro y consulta de propiedades, coordina compras/arriendos
-      {Inmobiliaria.PropertyManager, name: Inmobiliaria.PropertyManager},
-
       # DynamicSupervisor: un proceso GenServer por cada propiedad activa
       # Si un proceso de propiedad falla, solo ese se reinicia (one_for_one)
       {DynamicSupervisor, strategy: :one_for_one, name: Inmobiliaria.PropertySupervisor},
+
+      # Registro y consulta de propiedades, coordina compras/arriendos
+      {Inmobiliaria.PropertyManager, name: Inmobiliaria.PropertyManager},
 
       # Servidor principal: recibe y despacha comandos del CLI
       {Inmobiliaria.Server, []}
