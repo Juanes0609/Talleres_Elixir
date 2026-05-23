@@ -1,5 +1,5 @@
 ```mermaid
-graph TD
+graph LR
     %% Supervisor Principal
     Root["🗂️ Inmobiliaria.Supervisor<br>(one_for_one)"]
 
@@ -13,9 +13,9 @@ graph TD
     Srv["💻 Inmobiliaria.Server<br>(GenServer)"]
 
     %% Propiedades Dinámicas
-    P1(["🏠 Property<br>id: 'prop001'"])
-    P2(["🏠 Property<br>id: 'prop002'"])
-    PN(["🏠 Property<br>..."])
+    P1(["🏠 Property id: 'prop001'"])
+    P2(["🏠 Property id: 'prop002'"])
+    PN(["🏠 Property ..."])
 
     %% Conexiones del Supervisor Principal a sus hijos
     Root --> Reg
@@ -31,11 +31,11 @@ graph TD
     PropSup -. "start_child" .-> P2
     PropSup -. "start_child" .-> PN
 
-    %% Estilos para diferenciar tipos de procesos
-    classDef supervisor fill:#f9d0c4,stroke:#333,stroke-width:2px;
-    classDef dynSupervisor fill:#f9e79f,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef worker fill:#d5f5e3,stroke:#333,stroke-width:1px;
-    classDef dynamicWorker fill:#aed6f1,stroke:#333,stroke-width:1px;
+    %% Estilos para diferenciar tipos de procesos con letras más grandes
+    classDef supervisor fill:#f9d0c4,stroke:#333,stroke-width:2px,font-size:16px,font-weight:bold,color:#000;
+    classDef dynSupervisor fill:#f9e79f,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5,font-size:16px,font-weight:bold,color:#000;
+    classDef worker fill:#d5f5e3,stroke:#333,stroke-width:1px,font-size:15px,color:#000;
+    classDef dynamicWorker fill:#aed6f1,stroke:#333,stroke-width:1px,font-size:15px,color:#000;
 
     class Root supervisor;
     class PropSup dynSupervisor;
