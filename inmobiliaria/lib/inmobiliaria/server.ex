@@ -289,6 +289,7 @@ defmodule Inmobiliaria.Server do
           {:ok, _user} ->
             IO.puts("=> Conexión exitosa. Bienvenido, #{u}.")
             u
+
           {:error, err} ->
             IO.puts("=> Error: #{inspect(err)}")
             usuario_activo
@@ -299,60 +300,71 @@ defmodule Inmobiliaria.Server do
           disconnect(usuario_activo)
           IO.puts("=> Sesión cerrada.")
         end
+
         nil
 
       ["publicar_propiedad" | resto] ->
         if usuario_activo do
           attrs = parse_kv(resto)
+
           case publish_property(usuario_activo, attrs) do
             {:ok, prop} ->
               IO.puts("=> Propiedad publicada con ID: #{prop.id}")
               imprimir_propiedad(prop)
+
             {:error, err} ->
               IO.puts("=> Error: #{inspect(err)}")
           end
         else
           IO.puts("=> Conéctate primero.")
         end
+
         usuario_activo
 
       ["lista_propiedades" | resto] ->
         filters = parse_kv(resto)
         propiedades = list_properties(filters)
+
         if propiedades == [] do
           IO.puts("=> No hay propiedades disponibles.")
         else
           Enum.each(propiedades, &imprimir_propiedad/1)
         end
+
         usuario_activo
 
       ["comprar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(buy_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
+
         usuario_activo
 
       ["alquilar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(rent_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
+
         usuario_activo
 
       ["reservar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(reserve_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
+
         usuario_activo
 
       ["cancelar_propiedad", prop_id] ->
         if usuario_activo,
           do: IO.inspect(cancel_property(usuario_activo, prop_id)),
           else: IO.puts("=> Conéctate primero.")
+
         usuario_activo
 
       ["enviar_mensajes", prop_id | resto] ->
         if usuario_activo do
           mensaje = Enum.join(resto, " ")
+
           case send_message(usuario_activo, prop_id, mensaje) do
             :ok -> IO.puts("=> Mensaje enviado.")
             {:error, err} -> IO.puts("=> Error: #{inspect(err)}")
@@ -360,28 +372,39 @@ defmodule Inmobiliaria.Server do
         else
           IO.puts("=> Conéctate primero.")
         end
+
         usuario_activo
 
       ["leer_mensajes", prop_id] ->
         if usuario_activo do
           mensajes = read_messages(usuario_activo, prop_id)
+
           case mensajes do
             {:error, err} ->
               IO.puts("=> Error: #{inspect(err)}")
+
             [] ->
               IO.puts("=> No hay mensajes para esta propiedad.")
+
             lista ->
               Enum.each(lista, &imprimir_mensaje/1)
           end
         else
           IO.puts("=> Conéctate primero.")
         end
+
         usuario_activo
 
       ["mi_puntaje"] ->
-        if usuario_activo,
-          do: IO.puts("=> Tu puntaje: #{my_score(usuario_activo)} pts"),
-          else: IO.puts("=> Conéctate primero.")
+        if usuario_activo do
+          case my_score(usuario_activo) do
+            {:ok, score} -> IO.puts("=> Tu puntaje: #{score} pts")
+            {:error, _} -> IO.puts("=> No se encontró tu puntaje.")
+          end
+        else
+          IO.puts("=> Conéctate primero.")
+        end
+
         usuario_activo
 
       ["ranking"] ->

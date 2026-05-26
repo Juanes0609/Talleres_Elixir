@@ -403,7 +403,7 @@ defmodule Inmobiliaria.PropertyManager do
   end
 
   defp apply_filters(lista, filters) when map_size(filters) == 0 do
-    Enum.filter(lista, &(&1.estado == "disponible"))
+    Enum.filter(lista, &(&1.estado == "disponible" ))
   end
 
   defp apply_filters(lista, filters) do
